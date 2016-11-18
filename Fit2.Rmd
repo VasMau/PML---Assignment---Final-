@@ -1,0 +1,126 @@
+---
+title: "PML-Final Assignment (Fit_v2)"
+author: "Mauricio Vasquez"
+date: "November 17, 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+As part of the course "Practical Machine Learning", this final assignment analyses the "HAR" data. 
+
+According to Leek et al, "one thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants" (Leek,. J. et al. 2016, coursera PML material).
+
+In this report,  a model will be built to try to predict how well people exercise, using a know data and a set of predictor variables. 
+
+This report contains:
+  * Data adquisition, data understanding, Data preparation. 
+  * Exploratory data analysis: understanding the variable classe. Data partitioning between train and test.  
+  * A process to identify and apply predictive models to the data sets. Description of how a model was built.    
+  * Model selection, comparison and analysis of the expected  sample error and the reasoning on why one model is selected above the other.  
+  * A set of 20 different test cases will be predicted based on the model built.
+
+## The "Fit"" data
+
+Accelerometers placed on the belt, forearm, arm, and dumbbell of 6 participants were used to record data related to physical activity. Individuals were directed to perform barbell lifts correctly and incorrectly in 5 different ways:(sitting-down, standing-up, standing, walking, and sitting) and data was collected on 8 hours of activities 
+
+Read more: http://groupware.les.inf.puc-rio.br/har#dataset#ixzz4PxFL5Tuh
+
+Data originates from the HAR project. This dataset is licensed under the Creative Commons license (CC BY-SA). Ugulino, W.; Cardador, D.; Vega, K.; Velloso, E.; Milidiu, R.; Fuks, H. Wearable Computing: Accelerometers' Data Classification of Body Postures and Movements. Proceedings of 21st Brazilian Symposium on Artificial Intelligence. Advances in Artificial Intelligence - SBIA 2012. In: Lecture Notes in Computer Science. , pp. 52-61. Curitiba, PR: Springer Berlin / Heidelberg, 2012. ISBN 978-3-642-34458-9. DOI: 10.1007/978-3-642-34459-6_6.,
+<http://groupware.les.inf.puc-rio.br/har#ixzz4PxEjxWYN>
+ 
+```{r datafit}
+library(caret)
+library(ggplot2)
+library(randomForest)
+library(rpart)
+library(rpart.plot)
+library(RColorBrewer) 
+library(rattle)
+set.seed(433)
+urlT="http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+trainFit <- read.csv(url(urlT),na.strings=c("NA","#DIV/0!",""))
+dim(trainFit)
+urls <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+testset <- read.csv(url(urls),na.strings=c("NA","#DIV/0!",""))
+dim(testset)
+```
+
+Data tiding --"NA" variables removed 
+Columns 1-7 are not neccesary, as they are administartive variables.
+```{r data tide}
+trainFit<-trainFit[,colSums(is.na(trainFit)) == 0]
+testset <-testset[,colSums(is.na(testset)) == 0]
+trainFit <- trainFit[,-c(1:7)]
+testset <-testset[,-c(1:7)]
+
+```
+
+The Main data set is split between training and test subsets (70% for training / 30% for testing) random seed=433
+```{r subsettingdata}
+set.seed(433);
+trainIn <- createDataPartition(y=trainFit$classe,p=.70,list=F)
+training <- trainFit[trainIn,]
+testing <- trainFit[-trainIn,]
+ 
+dim(trainFit);dim(training);dim(testing)
+```
+
+## The classe variable
+
+The six participants in the study were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E).
+
+
+```{r plotfit}
+plot(training$classe, col="red", main="Frequency Distribution of the CLASSE Variable - Training Data Set", xlab="classe categories", ylab="Freq.")
+summary(training$classe);summary(testing$classe)
+```
+
+## A Single Predictive Model  
+
+The objective is to build a classification (predictive) model that allows to predict "classe" based on the sub-set of remaining variables (tidy dataset).
+
+A decision tree  will be used to demonstrate the application of a single model to understand the data and try to predict "classe".
+```{r modelRpart}
+dt1 <- rpart(classe ~ . , data=training, method="class")
+pd1 <- predict(dt1,testing, type = "class")
+rpart.plot(dt1, main="HR Data Set- RPart Predictive Model", extra=102, under=TRUE, faclen=0)
+
+confusionMatrix(pd1, testing$classe)
+```
+
+The accuracy of the rPart decision tree (rpart) is 75%
+
+## A Combined Predictive Model  
+
+Random Forest will be used to build a model based on combined classifiers of the same type.  Again, the variable "classe"in the HRA dataset will be predicted based on the subset of remaining variables after tiding the data.
+
+```{r modelrf}
+library(randomForest)
+rf1 <- randomForest(classe ~. , data=training, method="class")
+pd2=predict(rf1, testing, type ="class")
+head(pd2)
+```
+
+As expected, the use of a combined classifier, such as random forest, produces a model with a higher level of accuracy. The accuracy of RF (99.3%) is significantly higher than the accuracy of asingle model like rPart (74%). It is expected that using random forest  only 2% of instances may be missclassified (expected sample error rate).
+
+## Confusion Matrix and Crossvalidation
+`````{r conf_matrix}
+pd2=predict(rf1, testing, type ="class")
+confusionMatrix(pd2, testing$classe)
+EOOSE = (1 - confusionMatrix(pd2,  testing$classe)$overall[[1]])
+EOOSE
+```
+
+The estimated out-of-sample error rate (EOOSE) on the testing data set is calculated as: 1 - confusionMatrix(pd2,  testing$classe)$overall[[1]]. Thus,  given the small EOOS error rate the model fit is considered satisfactory.
+
+## Predicting new cases   
+
+Using Random Forest, the 20 cases provided in the training set will predicted.
+```{r test_pred}
+testpred <- predict(rf1, testset, type="class")
+testpred
+```
